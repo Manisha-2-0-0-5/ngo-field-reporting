@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NGO Adapter — Field Worker Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0F1117; --surface: #1A1D27; --border: #2A2D3A;
+    --text: #E8EAF0; --muted: #6B7280; --accent: #6366F1;
+    --green: #10B981; --red: #EF4444; --amber: #F59E0B; --blue: #3B82F6;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Space Grotesk', sans-serif; min-height: 100vh; }
+
+  nav { padding: 16px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .logo { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
+  .logo span { color: var(--accent); }
+  .nav-tag { font-size: 11px; color: var(--muted); background: var(--surface); border: 1px solid var(--border); padding: 4px 10px; border-radius: 100px; }
+
+  .container { max-width: 600px; margin: 40px auto; padding: 0 20px; }
+
+  .instructions {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 30px;
+  }
+  .instructions h3 { color: var(--accent); margin-bottom: 10px; }
+  .instructions ul { color: var(--muted); line-height: 1.6; }
+
+  .form-group { margin-bottom: 24px; }
+  .input-row { display: flex; gap: 10px; align-items: flex-start; }
+  .input-row textarea, .input-row input { flex: 1; margin-bottom: 0; }
+  .media-btn {
+    background: var(--blue); color: #fff; border: none; padding: 12px; border-radius: 6px; cursor: pointer;
+    font-size: 14px; display: flex; align-items: center; gap: 5px;
+  }
+  .media-btn:hover { opacity: 0.8; }
+  .media-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  label { font-size: 14px; color: var(--text); display: block; margin-bottom: 8px; font-weight: 500; }
+  input, textarea, select {
+    width: 100%; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-family: 'Space Grotesk', sans-serif;
+    font-size: 16px; padding: 12px; outline: none; transition: border-color .2s; resize: vertical;
+  }
+  input:focus, textarea:focus { border-color: var(--accent); }
+  input::placeholder, textarea::placeholder { color: #3A3D4A; }
+  textarea { min-height: 100px; }
+
+  .location-btn {
+    background: var(--blue); color: #fff; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin-top: 8px;
+    font-size: 14px;
+  }
+  .location-btn:hover { opacity: 0.8; }
+
+  .submit-btn {
+    width: 100%; background: var(--accent); color: #fff;
+    border: none; border-radius: 8px; padding: 16px;
+    font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 600;
+    cursor: pointer; transition: opacity .2s;
+  }
+  .submit-btn:hover { opacity: 0.88; }
+  .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .loading { display: none; text-align: center; color: var(--accent); margin-top: 10px; }
+
+  .result-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; margin-top: 30px;
+    display: none;
+  }
+  .result-box.success { border-color: var(--green); }
+  .result-box.error { border-color: var(--red); }
+  .result-box h3 { margin-bottom: 15px; }
+  .result-item { margin-bottom: 10px; }
+  .result-label { font-weight: 600; color: var(--muted); }
+
+  @media (max-width: 768px) {
+    .container { padding: 0 15px; }
+    nav { padding: 16px 20px; }
+  }
+</style>
+</head>
+<body>
+<nav>
+  <div class="logo">NGO <span>Adapter</span></div>
+  <div style="display: flex; align-items: center; gap: 16px;">
+    <span style="font-size: 14px; color: var(--muted);">Welcome, {{ current_user.username }} (Field Worker)</span>
+    <a href="{{ url_for('logout') }}" style="color: var(--red); text-decoration: none; font-size: 14px;">Logout</a>
+    <div class="nav-tag">Free Tier — Gemini + Supabase + OpenStreetMap</div>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="instructions">
+    <h3>📋 Submission Guidelines</h3>
+    <ul>
+      <li><strong>Describe clearly:</strong> Use local language/dialect - our AI will translate automatically</li>
+      <li><strong>Location:</strong> Be specific (neighborhood, landmarks) for accurate resource matching</li>
+      <li><strong>Urgency:</strong> Include timeline and severity details</li>
+      <li><strong>Voice Input:</strong> Click 🎤 to speak instead of typing</li>
+      <li><strong>File Upload:</strong> Upload PDFs or photos to extract text automatically</li>
+      <li><strong>Privacy:</strong> No personal identifiable information needed</li>
+    </ul>
+  </div>
+
+  <form id="submitForm">
+    <div class="form-group">
+      <label for="raw_input">Crisis Description *</label>
+      <div class="input-row">
+        <textarea id="raw_input" name="raw_input" placeholder="Describe the situation in detail (use local language if preferred)..." required></textarea>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <button type="button" class="media-btn" id="voiceBtn">🎤 Voice</button>
+          <label for="fileInput" class="media-btn" style="cursor: pointer; margin: 0;">
+            📎 Upload
+          </label>
+          <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png" style="display: none;">
+        </div>
+      </div>
+      <div id="voiceStatus" style="font-size: 12px; color: var(--muted); margin-top: 5px; display: none;"></div>
+    </div>
+
+    <div class="form-group">
+      <label for="location">Location *</label>
+      <input type="text" id="location" name="location" placeholder="City, area, or specific location" required>
+      <button type="button" class="location-btn" id="getLocationBtn">📍 Use Current Location</button>
+    </div>
+
+    <div class="form-group">
+      <label for="worker_name">Your Name *</label>
+      <input type="text" id="worker_name" name="worker_name" placeholder="Your field worker name" required>
+    </div>
+
+    <button type="submit" class="submit-btn" id="submitBtn">🚀 Submit Crisis Report</button>
+  </form>
+
+  <div class="loading" id="loading">
+    <div>🔄 Processing report...</div>
+    <div style="font-size: 12px; margin-top: 5px;">Translating, finding resources, and saving...</div>
+  </div>
+
+  <div id="result" class="result-box">
+    <h3 id="resultTitle"></h3>
+    <div id="resultContent"></div>
+  </div>
+</div>
+
+<script>
+document.getElementById('getLocationBtn').addEventListener('click', () => {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        document.getElementById('location').value = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+      },
+      (error) => {
+        alert('Location access denied. Please enter location manually.');
+      }
+    );
+  } else {
+    alert('Geolocation not supported. Please enter location manually.');
+  }
+});
+
+document.getElementById('submitForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  // Basic validation
+  const formData = new FormData(e.target);
+  const data = Object.fromEntries(formData);
+
+  if (!data.raw_input.trim() || !data.location.trim() || !data.worker_name.trim()) {
+    showResult('error', 'Please fill all required fields');
+    return;
+  }
+
+  const btn = document.getElementById('submitBtn');
+  const loading = document.getElementById('loading');
+
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+  loading.style.display = 'block';
+
+  try {
+    const response = await fetch('/api/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      showResult('success', result);
+      e.target.reset(); // Clear form
+    } else if (response.status === 401) {
+      showResult('error', 'Session expired. Please login again.');
+      setTimeout(() => window.location.href = '/login', 2000);
+    } else {
+      const error = await response.json();
+      showResult('error', error.error || 'Submission failed');
+    }
+  } catch (error) {
+    showResult('error', 'Network error. Check connection and try again.');
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🚀 Submit Crisis Report';
+  loading.style.display = 'none';
+});
+
+function showResult(type, content) {
+  const resultDiv = document.getElementById('result');
+  const titleDiv = document.getElementById('resultTitle');
+  const contentDiv = document.getElementById('resultContent');
+
+  resultDiv.className = `result-box ${type}`;
+  titleDiv.textContent = type === 'success' ? '✅ Report Submitted Successfully' : '❌ Submission Failed';
+
+  if (type === 'success') {
+    contentDiv.innerHTML = `
+      <div class="result-item"><span class="result-label">Report ID:</span> ${content.doc_id}</div>
+      <div class="result-item"><span class="result-label">Translated Summary:</span> ${content.translated?.summary || 'Processing...'}</div>
+      <div class="result-item"><span class="result-label">Nearby Resources:</span> ${content.resources?.length || 0} found</div>
+      <div class="result-item"><span class="result-label">Similar Cases:</span> ${content.similar?.length || 0} matched</div>
+      <div style="margin-top: 15px; font-size: 14px; color: var(--green);">Report saved and sent to administrators for review.</div>
+    `;
+  } else {
+    contentDiv.innerHTML = `<div class="result-item">${content}</div>`;
+  }
+
+  resultDiv.style.display = 'block';
+  resultDiv.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Auto-fill worker name
+document.getElementById('worker_name').value = '{{ current_user.username }}';
+
+// Voice input functionality
+let recognition = null;
+const voiceBtn = document.getElementById('voiceBtn');
+const voiceStatus = document.getElementById('voiceStatus');
+const rawInput = document.getElementById('raw_input');
+
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US'; // Can be changed to local language
+
+  recognition.onstart = () => {
+    voiceBtn.textContent = '🎤 Listening...';
+    voiceBtn.disabled = true;
+    voiceStatus.textContent = 'Listening... Click again to stop.';
+    voiceStatus.style.display = 'block';
+  };
+
+  recognition.onresult = (event) => {
+    const transcript = event.results[0][0].transcript;
+    rawInput.value += (rawInput.value ? ' ' : '') + transcript;
+    voiceStatus.textContent = 'Voice input added!';
+    setTimeout(() => voiceStatus.style.display = 'none', 2000);
+  };
+
+  recognition.onerror = (event) => {
+    voiceStatus.textContent = 'Voice recognition error: ' + event.error;
+    voiceStatus.style.color = 'var(--red)';
+    setTimeout(() => voiceStatus.style.display = 'none', 3000);
+  };
+
+  recognition.onend = () => {
+    voiceBtn.textContent = '🎤 Voice';
+    voiceBtn.disabled = false;
+  };
+
+  voiceBtn.addEventListener('click', () => {
+    if (recognition && recognition.continuous) {
+      recognition.stop();
+    } else {
+      recognition.start();
+    }
+  });
+} else {
+  voiceBtn.disabled = true;
+  voiceBtn.textContent = '🎤 Not Supported';
+}
+
+// File upload functionality
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  voiceStatus.textContent = 'Processing file...';
+  voiceStatus.style.display = 'block';
+  voiceStatus.style.color = 'var(--accent)';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await fetch('/api/extract-text', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      rawInput.value += (rawInput.value ? ' ' : '') + result.text;
+      voiceStatus.textContent = 'Text extracted from file!';
+      voiceStatus.style.color = 'var(--green)';
+    } else {
+      throw new Error('Extraction failed');
+    }
+  } catch (error) {
+    voiceStatus.textContent = 'File processing failed. Please try again.';
+    voiceStatus.style.color = 'var(--red)';
+  }
+
+  setTimeout(() => voiceStatus.style.display = 'none', 3000);
+});
+</script>
+</body>
+</html>

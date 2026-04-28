@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NGO Adapter — Admin Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0F1117; --surface: #1A1D27; --border: #2A2D3A;
+    --text: #E8EAF0; --muted: #6B7280; --accent: #6366F1;
+    --green: #10B981; --red: #EF4444; --amber: #F59E0B; --blue: #3B82F6;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Space Grotesk', sans-serif; min-height: 100vh; }
+
+  nav { padding: 16px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .logo { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
+  .logo span { color: var(--accent); }
+  .nav-tag { font-size: 11px; color: var(--muted); background: var(--surface); border: 1px solid var(--border); padding: 4px 10px; border-radius: 100px; }
+
+  .container { max-width: 1200px; margin: 40px auto; padding: 0 32px; }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 40px; }
+
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px;
+    text-align: center;
+  }
+  .stat-number { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+  .stat-label { font-size: 14px; color: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 10px; overflow: hidden; }
+  th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg); font-weight: 600; }
+  .resolve-btn {
+    background: var(--green); color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;
+  }
+  .resolve-btn:hover { opacity: 0.8; }
+</style>
+</head>
+<body>
+<nav>
+  <div class="logo">NGO <span>Adapter</span></div>
+  <div style="display: flex; align-items: center; gap: 16px;">
+    <span style="font-size: 14px; color: var(--muted);">Welcome, {{ current_user.username }} (Administrator)</span>
+    <a href="{{ url_for('logout') }}" style="color: var(--red); text-decoration: none; font-size: 14px;">Logout</a>
+    <div class="nav-tag">Free Tier — Gemini + Supabase + OpenStreetMap</div>
+  </div>
+</nav>
+
+<div class="container">
+  <h1 style="font-size: 24px; margin-bottom: 20px;">Admin Dashboard</h1>
+
+  <div class="stats-grid" id="stats">
+    <!-- Stats will be loaded here -->
+  </div>
+
+  <h2 style="font-size: 20px; margin-bottom: 20px;">Recent Submissions</h2>
+  <table id="submissionsTable">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Worker</th>
+        <th>Location</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Submissions will be loaded here -->
+    </tbody>
+  </table>
+</div>
+
+<script>
+async function loadStats() {
+  try {
+    const response = await fetch('/api/stats');
+    const stats = await response.json();
+    document.getElementById('stats').innerHTML = `
+      <div class="stat-card">
+        <div class="stat-number">${stats.total}</div>
+        <div class="stat-label">Total Reports</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" style="color: var(--green);">${stats.resolved}</div>
+        <div class="stat-label">Resolved</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" style="color: var(--amber);">${stats.unresolved}</div>
+        <div class="stat-label">Pending</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${Object.keys(stats.gap_frequencies).length}</div>
+        <div class="stat-label">Crisis Types</div>
+      </div>
+    `;
+  } catch (error) {
+    console.error('Error loading stats:', error);
+  }
+}
+
+async function loadSubmissions() {
+  try {
+    const response = await fetch('/api/submissions');
+    const submissions = await response.json();
+    const tbody = document.querySelector('#submissionsTable tbody');
+    tbody.innerHTML = submissions.slice(0, 20).map(s => `
+      <tr>
+        <td>${s.id.substring(0, 8)}...</td>
+        <td>${s.worker_name}</td>
+        <td>${s.location}</td>
+        <td style="color: ${s.resolved ? 'var(--green)' : 'var(--amber)'}">${s.resolved ? 'Resolved' : 'Pending'}</td>
+        <td>${new Date(s.created_at).toLocaleDateString()}</td>
+        <td>
+          ${!s.resolved ? `<button class="resolve-btn" onclick="resolve('${s.id}')">Resolve</button>` : 'Resolved'}
+        </td>
+      </tr>
+    `).join('');
+  } catch (error) {
+    console.error('Error loading submissions:', error);
+  }
+}
+
+async function resolve(docId) {
+  const notes = prompt('Resolution notes:');
+  if (!notes) return;
+
+  try {
+    const response = await fetch(`/api/resolve/${docId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes })
+    });
+    if (response.ok) {
+      loadSubmissions();
+      loadStats();
+    }
+  } catch (error) {
+    console.error('Error resolving:', error);
+  }
+}
+
+loadStats();
+loadSubmissions();
+</script>
+</body>
+</html>
