@@ -17,5 +17,3 @@ cp .env.example .env
 python app.py
 # open http://localhost:5000
 ```
-
-### That's it. No GCP. No billing. No card.
